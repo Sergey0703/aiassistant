@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+chromadb
+python-dotenv
+sqlalchemy
+databases
+httpx
+aiosqlite
