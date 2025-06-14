@@ -48,7 +48,13 @@ export interface Document {
   content: string;
   category: string;
   size: number;
-  uploadDate?: string;
+  source?: string;
+  original_url?: string;
+  word_count?: number;
+  chunks_count?: number;
+  added_at: number; // Unix timestamp
+  metadata?: any;
+  uploadDate?: string; // Deprecated, use added_at instead
 }
 
 export interface DocumentsResponse {
@@ -101,6 +107,13 @@ export interface FormErrors {
 // Categories for documents
 export const DOCUMENT_CATEGORIES = [
   'general',
+  'legislation', 
+  'jurisprudence',
+  'government',
+  'civil_rights',
+  'scraped',
+  'ukraine_legal',
+  'ireland_legal',
   'civil',
   'criminal',
   'tax',

@@ -25,6 +25,37 @@ interface PredefinedSites {
   ireland: string[];
 }
 
+// Функция для безопасного извлечения сообщения об ошибке
+const getErrorMessage = (error: any): string => {
+  // Если это объект ошибки валидации Pydantic
+  if (error?.response?.data?.detail) {
+    const detail = error.response.data.detail;
+    
+    // Если detail - это массив ошибок валидации
+    if (Array.isArray(detail)) {
+      return detail.map(err => {
+        if (typeof err === 'object' && err.msg) {
+          return `${err.loc?.join('.')}: ${err.msg}`;
+        }
+        return JSON.stringify(err);
+      }).join('; ');
+    }
+    
+    // Если detail - это строка
+    if (typeof detail === 'string') {
+      return detail;
+    }
+    
+    // Если detail - это объект
+    if (typeof detail === 'object') {
+      return JSON.stringify(detail);
+    }
+  }
+  
+  // Fallback к обычным сообщениям об ошибках
+  return error?.message || error?.toString() || 'Unknown error';
+};
+
 const URLScraper: React.FC = () => {
   const { t } = useTranslation();
   const [urls, setUrls] = useState<string[]>(['']);
@@ -86,7 +117,7 @@ const URLScraper: React.FC = () => {
         title: 'Error',
         success: false,
         content_length: 0,
-        error: error.response?.data?.detail || error.message || 'Unknown error'
+        error: getErrorMessage(error)
       };
       setResults(prev => [result, ...prev]);
     } finally {
@@ -115,7 +146,7 @@ const URLScraper: React.FC = () => {
         title: 'Error',
         success: false,
         content_length: 0,
-        error: error.response?.data?.detail || error.message || 'Unknown error'
+        error: getErrorMessage(error)
       }));
       setResults(errorResults);
     } finally {
@@ -126,11 +157,9 @@ const URLScraper: React.FC = () => {
   const scrapePredefined = async (): Promise<void> => {
     setIsLoading(true);
     try {
-      const response = await axios.post('/api/admin/scrape/predefined', null, {
-        params: {
-          country: selectedCountry,
-          limit: 3  // Уменьшаем лимит для тестирования
-        }
+      const response = await axios.post('/api/admin/scrape/predefined', {
+        country: selectedCountry,
+        limit: 3  // Уменьшаем лимит для тестирования
       });
 
       setResults(response.data.results || []);
@@ -143,7 +172,7 @@ const URLScraper: React.FC = () => {
         title: 'Error',
         success: false,
         content_length: 0,
-        error: error.response?.data?.detail || error.message || 'Unknown error'
+        error: getErrorMessage(error)
       };
       setResults([errorResult]);
     } finally {

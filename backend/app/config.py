@@ -1,10 +1,10 @@
 # ====================================
-# ФАЙЛ: backend/app/config.py (ИСПРАВЛЕННАЯ ВЕРСИЯ)
+# ФАЙЛ: backend/app/config.py (ОБНОВЛЕННАЯ ВЕРСИЯ)
 # Заменить существующий файл полностью
 # ====================================
 
 """
-Конфигурация приложения
+Конфигурация приложения с настройками LLM
 """
 
 # Пытаемся импортировать pydantic_settings с fallback
@@ -70,6 +70,48 @@ class Settings(BaseSettings):
     DEFAULT_SEARCH_LIMIT: int = 5
     MAX_SEARCH_LIMIT: int = 50
     
+    # ====================================
+    # НОВЫЕ НАСТРОЙКИ LLM
+    # ====================================
+    
+    # Ollama конфигурация
+    OLLAMA_ENABLED: bool = True
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_DEFAULT_MODEL: str = "llama3:latest"  # ИСПРАВЛЕНО для ваших моделей
+    OLLAMA_FALLBACK_MODELS: List[str] = ["llama3:latest", "llama3:8b"]  # ИСПРАВЛЕНО
+    
+    # Параметры генерации
+    LLM_TEMPERATURE: float = 0.3  # Низкая для юридических вопросов
+    LLM_MAX_TOKENS: int = 1500
+    LLM_TIMEOUT: int = 120  # секунд (увеличено с 60)
+    
+    # Управление контекстом
+    MAX_CONTEXT_DOCUMENTS: int = 3  # Максимум документов в контексте
+    MAX_CONTEXT_LENGTH: int = 4000  # Максимальная длина контекста
+    CONTEXT_TRUNCATE_LENGTH: int = 1500  # Длина каждого документа в контексте
+    
+    # Режимы работы
+    LLM_DEMO_MODE: bool = False  # Если True, показывает заглушки вместо реальных ответов
+    LLM_FALLBACK_ENABLED: bool = True  # Включить fallback если LLM недоступен
+    
+    # Кэширование ответов
+    LLM_CACHE_ENABLED: bool = True
+    LLM_CACHE_TTL: int = 3600  # 1 час
+    LLM_CACHE_MAX_SIZE: int = 100  # Максимум кэшированных ответов
+    
+    # Мониторинг и лимиты
+    LLM_RATE_LIMIT: int = 60  # Запросов в час на пользователя
+    LLM_DAILY_LIMIT: int = 500  # Запросов в день
+    LLM_LOG_REQUESTS: bool = True  # Логировать все запросы к LLM
+    
+    # Языковые настройки
+    SUPPORTED_LANGUAGES: List[str] = ["en", "uk"]
+    DEFAULT_LANGUAGE: str = "en"
+    
+    # Промпт настройки
+    SYSTEM_PROMPT_MAX_LENGTH: int = 1000
+    USER_PROMPT_MAX_LENGTH: int = 2000
+    
     def __init__(self, **kwargs):
         # Инициализация с возможностью работы без pydantic
         try:
@@ -87,7 +129,16 @@ class Settings(BaseSettings):
             'MAX_FILE_SIZE': ('MAX_FILE_SIZE', int),
             'LOG_LEVEL': ('LOG_LEVEL', str),
             'SCRAPING_DELAY': ('SCRAPING_DELAY', float),
-            'DEFAULT_SEARCH_LIMIT': ('DEFAULT_SEARCH_LIMIT', int)
+            'DEFAULT_SEARCH_LIMIT': ('DEFAULT_SEARCH_LIMIT', int),
+            
+            # LLM настройки из переменных окружения
+            'OLLAMA_ENABLED': ('OLLAMA_ENABLED', lambda x: x.lower() in ['true', '1', 'yes']),
+            'OLLAMA_BASE_URL': ('OLLAMA_BASE_URL', str),
+            'OLLAMA_DEFAULT_MODEL': ('OLLAMA_DEFAULT_MODEL', str),
+            'LLM_TEMPERATURE': ('LLM_TEMPERATURE', float),
+            'LLM_MAX_TOKENS': ('LLM_MAX_TOKENS', int),
+            'LLM_DEMO_MODE': ('LLM_DEMO_MODE', lambda x: x.lower() in ['true', '1', 'yes']),
+            'LLM_CACHE_ENABLED': ('LLM_CACHE_ENABLED', lambda x: x.lower() in ['true', '1', 'yes'])
         }
         
         for attr_name, (env_name, converter) in env_mappings.items():
@@ -137,6 +188,30 @@ except Exception as e:
             self.DEFAULT_SEARCH_LIMIT = 5
             self.MAX_SEARCH_LIMIT = 50
             
+            # LLM настройки fallback
+            self.OLLAMA_ENABLED = True
+            self.OLLAMA_BASE_URL = "http://localhost:11434"
+            self.OLLAMA_DEFAULT_MODEL = "llama3:8b"  # ИСПРАВЛЕНО
+            self.OLLAMA_FALLBACK_MODELS = ["llama3:latest", "llama3:8b"]  # ИСПРАВЛЕНО
+            self.LLM_TEMPERATURE = 0.3
+            self.LLM_MAX_TOKENS = 500
+            self.LLM_TIMEOUT = 180
+            self.MAX_CONTEXT_DOCUMENTS = 3
+            self.MAX_CONTEXT_LENGTH = 4000
+            self.CONTEXT_TRUNCATE_LENGTH = 1500
+            self.LLM_DEMO_MODE = False
+            self.LLM_FALLBACK_ENABLED = True
+            self.LLM_CACHE_ENABLED = True
+            self.LLM_CACHE_TTL = 3600
+            self.LLM_CACHE_MAX_SIZE = 100
+            self.LLM_RATE_LIMIT = 60
+            self.LLM_DAILY_LIMIT = 500
+            self.LLM_LOG_REQUESTS = True
+            self.SUPPORTED_LANGUAGES = ["en", "uk"]
+            self.DEFAULT_LANGUAGE = "en"
+            self.SYSTEM_PROMPT_MAX_LENGTH = 1000
+            self.USER_PROMPT_MAX_LENGTH = 2000
+            
             # Загружаем из переменных окружения
             self._load_from_env()
         
@@ -146,11 +221,14 @@ except Exception as e:
                 self.USE_CHROMADB = os.getenv('USE_CHROMADB').lower() in ['true', '1', 'yes']
             if os.getenv('LOG_LEVEL'):
                 self.LOG_LEVEL = os.getenv('LOG_LEVEL')
-            if os.getenv('MAX_FILE_SIZE'):
-                try:
-                    self.MAX_FILE_SIZE = int(os.getenv('MAX_FILE_SIZE'))
-                except ValueError:
-                    pass
+            if os.getenv('OLLAMA_ENABLED'):
+                self.OLLAMA_ENABLED = os.getenv('OLLAMA_ENABLED').lower() in ['true', '1', 'yes']
+            if os.getenv('OLLAMA_BASE_URL'):
+                self.OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL')
+            if os.getenv('OLLAMA_DEFAULT_MODEL'):
+                self.OLLAMA_DEFAULT_MODEL = os.getenv('OLLAMA_DEFAULT_MODEL')
+            if os.getenv('LLM_DEMO_MODE'):
+                self.LLM_DEMO_MODE = os.getenv('LLM_DEMO_MODE').lower() in ['true', '1', 'yes']
     
     settings = FallbackSettings()
 
@@ -190,6 +268,10 @@ API_TAGS = [
     {
         "name": "Admin Stats",
         "description": "Statistics and analytics endpoints for administrators"
+    },
+    {
+        "name": "Admin LLM",
+        "description": "LLM management and monitoring endpoints"
     },
     {
         "name": "System",
@@ -233,3 +315,91 @@ IRELAND_LEGAL_URLS = [
     "https://www.justice.ie/",
     "https://www.oireachtas.ie/"
 ]
+
+# ====================================
+# НОВЫЕ КОНСТАНТЫ ДЛЯ LLM
+# ====================================
+
+# Рекомендуемые модели Ollama для юридических задач
+RECOMMENDED_MODELS = {
+    "small": "llama3:8b",         # Быстрая модель 
+    "medium": "llama3:latest",    # Балансированная модель (ваша основная)
+    "large": "llama3:8b",         # Более точная модель (та же что и small у вас)
+    "specialized": "llama3:latest" # Основная модель
+}
+
+# Настройки качества ответов
+RESPONSE_QUALITY_SETTINGS = {
+    "creative": {"temperature": 0.8, "max_tokens": 2000},    # Творческие ответы
+    "balanced": {"temperature": 0.5, "max_tokens": 1500},    # Сбалансированные
+    "precise": {"temperature": 0.2, "max_tokens": 1000},     # Точные ответы
+    "legal": {"temperature": 0.3, "max_tokens": 1500}        # Для юридических вопросов
+}
+
+# Лимиты по умолчанию
+DEFAULT_LIMITS = {
+    "context_documents": 3,
+    "context_length": 4000,
+    "response_length": 1500,
+    "request_timeout": 60
+}
+
+# Поддерживаемые языки с метаданными
+LANGUAGE_CONFIG = {
+    "en": {
+        "name": "English",
+        "code": "en",
+        "rtl": False,
+        "supported": True
+    },
+    "uk": {
+        "name": "Українська",
+        "code": "uk", 
+        "rtl": False,
+        "supported": True
+    }
+}
+
+def get_llm_config() -> dict:
+    """Возвращает конфигурацию LLM"""
+    return {
+        "enabled": settings.OLLAMA_ENABLED,
+        "base_url": settings.OLLAMA_BASE_URL,
+        "default_model": settings.OLLAMA_DEFAULT_MODEL,
+        "fallback_models": settings.OLLAMA_FALLBACK_MODELS,
+        "temperature": settings.LLM_TEMPERATURE,
+        "max_tokens": settings.LLM_MAX_TOKENS,
+        "timeout": settings.LLM_TIMEOUT,
+        "demo_mode": settings.LLM_DEMO_MODE,
+        "cache_enabled": settings.LLM_CACHE_ENABLED,
+        "supported_languages": settings.SUPPORTED_LANGUAGES,
+        "recommended_models": RECOMMENDED_MODELS,
+        "quality_settings": RESPONSE_QUALITY_SETTINGS
+    }
+
+def validate_llm_config() -> dict:
+    """Валидирует конфигурацию LLM"""
+    issues = []
+    warnings = []
+    
+    # Проверяем базовые настройки
+    if not settings.OLLAMA_ENABLED:
+        warnings.append("Ollama disabled in configuration")
+    
+    if settings.LLM_DEMO_MODE:
+        warnings.append("LLM running in demo mode")
+    
+    if settings.LLM_TEMPERATURE < 0 or settings.LLM_TEMPERATURE > 1:
+        issues.append("LLM temperature should be between 0 and 1")
+    
+    if settings.LLM_MAX_TOKENS < 100:
+        issues.append("LLM max_tokens too low (minimum 100)")
+    
+    if settings.LLM_TIMEOUT < 10:
+        warnings.append("LLM timeout very low, may cause request failures")
+    
+    return {
+        "valid": len(issues) == 0,
+        "issues": issues,
+        "warnings": warnings
+    }

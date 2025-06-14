@@ -1,10 +1,10 @@
 # ====================================
-# ФАЙЛ: backend/app/dependencies.py (ПОЛНАЯ ВЕРСИЯ)
+# ФАЙЛ: backend/app/dependencies.py (ОБНОВЛЕННАЯ ВЕРСИЯ)
 # Заменить существующий файл полностью
 # ====================================
 
 """
-Зависимости и инициализация сервисов
+Зависимости и инициализация сервисов с поддержкой LLM
 """
 
 import logging
@@ -155,43 +155,74 @@ For full functionality, please install the scraping dependencies.
             results.append(doc)
         
         return results
+
+class FallbackLLMService:
+    """Заглушка для LLM service когда Ollama недоступен"""
     
-    async def validate_url(self, url: str):
-        """Заглушка для валидации URL"""
-        from urllib.parse import urlparse
+    def __init__(self):
+        self.service_type = "fallback"
+        self.ollama_available = False
+        logger.info("🤖 Using fallback LLM service")
+    
+    async def answer_legal_question(self, question: str, context_documents: List[Dict], language: str = "en"):
+        """Заглушка для ответов на юридические вопросы"""
+        logger.warning(f"Fallback LLM called for question: {question[:50]}...")
         
-        try:
-            parsed = urlparse(url)
-            return {
-                "url": url,
-                "valid": bool(parsed.scheme and parsed.netloc),
-                "reachable": False,  # В fallback режиме не проверяем реальную доступность
-                "issues": ["Real URL validation unavailable in fallback mode"],
-                "warnings": ["Install aiohttp for real URL validation"],
-                "service": "fallback"
-            }
-        except Exception as e:
-            return {
-                "url": url,
-                "valid": False,
-                "issues": [f"URL validation error: {e}"],
-                "service": "fallback"
-            }
+        # Создаем демо ответ
+        from services.llm_service import LLMResponse
+        
+        if language == "uk":
+            demo_content = f"""⚠️ ДЕМО РЕЖИМ: Ollama недоступний
+            
+На основі знайдених документів я би відповів на ваше запитання: "{question}"
+
+📚 Знайдено {len(context_documents)} релевантних документів у базі знань.
+
+💡 Для отримання повноцінних AI-відповідей:
+1. Встановіть Ollama: https://ollama.ai
+2. Завантажте модель: ollama pull llama3.2
+3. Перезапустіть сервер
+
+🔧 Поточний статус: Ollama сервіс недоступний на http://localhost:11434"""
+        else:
+            demo_content = f"""⚠️ DEMO MODE: Ollama unavailable
+            
+Based on the found documents, I would answer your question: "{question}"
+
+📚 Found {len(context_documents)} relevant documents in the knowledge base.
+
+💡 To get full AI responses:
+1. Install Ollama: https://ollama.ai
+2. Pull a model: ollama pull llama3.2
+3. Restart the server
+
+🔧 Current status: Ollama service unavailable at http://localhost:11434"""
+        
+        return LLMResponse(
+            content=demo_content,
+            model="fallback",
+            tokens_used=0,
+            response_time=0.1,
+            success=False,
+            error="Ollama service not available"
+        )
     
-    def get_stats(self):
-        """Статистика fallback scraper"""
+    async def get_service_status(self):
+        """Возвращает статус fallback LLM сервиса"""
         return {
+            "ollama_available": False,
+            "models_available": [],
+            "default_model": "fallback",
+            "base_url": "N/A",
+            "system_prompts_loaded": 0,
+            "supported_languages": ["en", "uk"],
+            "error": "Ollama service not available - install Ollama and restart server",
             "service_type": "fallback",
-            "real_scraping_available": False,
-            "demo_mode": True,
-            "supported_features": [
-                "Demo document generation",
-                "URL validation",
-                "Bulk processing simulation"
-            ],
-            "missing_dependencies": [
-                "aiohttp",
-                "beautifulsoup4"
+            "recommendations": [
+                "Install Ollama from https://ollama.ai",
+                "Run: ollama pull llama3.2",
+                "Ensure Ollama is running on http://localhost:11434",
+                "Restart the Legal Assistant server"
             ]
         }
 
@@ -202,12 +233,14 @@ For full functionality, please install the scraping dependencies.
 # Глобальные сервисы
 document_service: Optional[object] = None
 scraper: Optional[object] = None
+llm_service: Optional[object] = None  # НОВЫЙ СЕРВИС
 SERVICES_AVAILABLE: bool = False
 CHROMADB_ENABLED: bool = False
+LLM_ENABLED: bool = False  # НОВЫЙ ФЛАГ
 
 async def init_services():
-    """Инициализация всех сервисов приложения"""
-    global document_service, scraper, SERVICES_AVAILABLE, CHROMADB_ENABLED
+    """Инициализация всех сервисов приложения включая LLM"""
+    global document_service, scraper, llm_service, SERVICES_AVAILABLE, CHROMADB_ENABLED, LLM_ENABLED
     
     logger.info("🔧 Initializing services...")
     
@@ -269,12 +302,48 @@ async def init_services():
         scraper = None
     
     # ====================================
+    # ИНИЦИАЛИЗАЦИЯ LLM СЕРВИСА
+    # ====================================
+    try:
+        if settings.OLLAMA_ENABLED and not settings.LLM_DEMO_MODE:
+            from services.llm_service import create_llm_service
+            
+            llm_service = create_llm_service(
+                ollama_url=settings.OLLAMA_BASE_URL,
+                model=settings.OLLAMA_DEFAULT_MODEL
+            )
+            
+            # Проверяем доступность Ollama
+            status = await llm_service.get_service_status()
+            
+            if status["ollama_available"]:
+                LLM_ENABLED = True
+                logger.info("✅ LLM service initialized with Ollama")
+                logger.info(f"   Available models: {status['models_available']}")
+            else:
+                logger.warning(f"⚠️ LLM service created but Ollama unavailable: {status.get('error')}")
+                LLM_ENABLED = False
+        else:
+            logger.info("ℹ️ LLM service disabled in configuration or demo mode")
+            LLM_ENABLED = False
+            
+    except ImportError as e:
+        logger.error(f"❌ LLM service import failed: {e}")
+        llm_service = None
+        LLM_ENABLED = False
+    except Exception as e:
+        logger.error(f"❌ Error initializing LLM service: {e}")
+        llm_service = None
+        LLM_ENABLED = False
+    
+    # ====================================
     # ФИНАЛЬНЫЙ СТАТУС
     # ====================================
     logger.info(f"📊 Services status:")
     logger.info(f"   Document service: {'✅' if document_service else '❌'}")
     logger.info(f"   ChromaDB enabled: {'✅' if CHROMADB_ENABLED else '❌'}")
     logger.info(f"   Scraper service: {'✅' if scraper else '❌'}")
+    logger.info(f"   LLM service: {'✅' if LLM_ENABLED else '❌'}")
     logger.info(f"   Overall available: {'✅' if SERVICES_AVAILABLE else '❌'}")
 
 # ====================================
@@ -297,14 +366,26 @@ def get_scraper_service():
         return FallbackScraperService()
     return scraper
 
+def get_llm_service():
+    """Dependency для получения LLM сервиса"""
+    if not llm_service or not LLM_ENABLED:
+        # Создаем заглушку если LLM недоступен
+        logger.debug("Using fallback LLM service")
+        return FallbackLLMService()
+    return llm_service
+
 def get_services_status():
     """Dependency для получения статуса сервисов"""
     return {
         "document_service_available": document_service is not None,
         "scraper_available": scraper is not None,
+        "llm_available": LLM_ENABLED,
+        "llm_service_created": llm_service is not None,
         "chromadb_enabled": CHROMADB_ENABLED,
         "services_available": SERVICES_AVAILABLE,
-        "fallback_mode": document_service is None or scraper is None
+        "fallback_mode": document_service is None or scraper is None or not LLM_ENABLED,
+        "ollama_enabled": settings.OLLAMA_ENABLED,
+        "llm_demo_mode": settings.LLM_DEMO_MODE
     }
 
 # ====================================
@@ -315,9 +396,18 @@ async def get_system_health():
     """Получает детальную информацию о здоровье системы"""
     status = get_services_status()
     
+    # Проверяем статус LLM если он доступен
+    llm_status = {}
+    if llm_service and LLM_ENABLED:
+        try:
+            llm_status = await llm_service.get_service_status()
+        except Exception as e:
+            llm_status = {"error": str(e), "available": False}
+    
     health_info = {
-        "overall_status": "healthy" if status["services_available"] else "degraded",
+        "overall_status": "healthy" if status["services_available"] and status["llm_available"] else "degraded",
         "services": status,
+        "llm_status": llm_status,
         "dependencies": {
             "fastapi": True,  # Если мы дошли до сюда, FastAPI работает
             "pydantic": True, # Аналогично для Pydantic
@@ -326,7 +416,8 @@ async def get_system_health():
             "document_processing": status["document_service_available"],
             "web_scraping": status["scraper_available"], 
             "vector_search": status["chromadb_enabled"],
-            "demo_mode": not status["services_available"]
+            "ai_responses": status["llm_available"],
+            "demo_mode": not status["services_available"] or status["llm_demo_mode"]
         }
     }
     
@@ -370,6 +461,22 @@ async def get_service_recommendations():
             "command": "pip install aiohttp beautifulsoup4"
         })
     
+    if not status["llm_available"]:
+        if not settings.OLLAMA_ENABLED:
+            recommendations.append({
+                "priority": "high",
+                "category": "ai_responses",
+                "message": "Enable Ollama in configuration",
+                "command": "Set OLLAMA_ENABLED=true in environment or config"
+            })
+        else:
+            recommendations.append({
+                "priority": "high",
+                "category": "ai_responses", 
+                "message": "Install and start Ollama for AI responses",
+                "command": "Install from https://ollama.ai, then run: ollama pull llama3.2"
+            })
+    
     if not status["chromadb_enabled"] and status["document_service_available"]:
         recommendations.append({
             "priority": "low",
@@ -387,6 +494,28 @@ async def get_service_recommendations():
         })
     
     return recommendations
+
+async def cleanup_services():
+    """Правильно закрывает все сервисы при выключении"""
+    global llm_service, scraper
+    
+    logger.info("🧹 Cleaning up services...")
+    
+    try:
+        if llm_service and hasattr(llm_service, 'close'):
+            await llm_service.close()
+            logger.info("✅ LLM service closed")
+    except Exception as e:
+        logger.error(f"Error closing LLM service: {e}")
+    
+    try:
+        if scraper and hasattr(scraper, 'close'):
+            await scraper.close()
+            logger.info("✅ Scraper service closed")
+    except Exception as e:
+        logger.error(f"Error closing scraper service: {e}")
+    
+    logger.info("✅ Services cleanup completed")
 
 def create_fallback_response(service_name: str, operation: str, **kwargs):
     """Создает стандартизированный fallback ответ"""
@@ -408,15 +537,20 @@ def create_fallback_response(service_name: str, operation: str, **kwargs):
 
 __all__ = [
     "init_services",
+    "cleanup_services",  # НОВЫЙ ЭКСПОРТ
     "get_document_service", 
     "get_scraper_service",
+    "get_llm_service",  # НОВЫЙ ЭКСПОРТ
     "get_services_status",
     "get_system_health",
     "get_service_recommendations",
     "FallbackDocumentService",
     "FallbackScraperService",
+    "FallbackLLMService",  # НОВЫЙ ЭКСПОРТ
     "SERVICES_AVAILABLE",
     "CHROMADB_ENABLED",
+    "LLM_ENABLED",  # НОВЫЙ ЭКСПОРТ
     "document_service",
-    "scraper"
+    "scraper",
+    "llm_service"  # НОВЫЙ ЭКСПОРТ
 ]
