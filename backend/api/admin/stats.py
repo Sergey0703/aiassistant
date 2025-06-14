@@ -277,6 +277,132 @@ async def _analyze_document_categories(document_service):
         logger.error(f"Category analysis error: {e}")
         return {"error": str(e)}
 
+@router.get("/debug/chromadb-search")
+async def debug_chromadb_search(
+    query: str = "Statutory Rules",
+    document_service = Depends(get_document_service)
+):
+    """Диагностический endpoint для отладки ChromaDB поиска"""
+    try:
+        logger.info(f"🔍 Debug ChromaDB search for: {query}")
+        
+        # Получаем прямой доступ к ChromaDB
+        chroma_service = document_service.vector_db
+        collection = chroma_service.collection
+        
+        # 1. Проверяем общее количество документов
+        total_count = collection.count()
+        
+        # 2. Получаем ВСЕ документы из коллекции
+        all_docs = collection.get(
+            include=["documents", "metadatas", "embeddings"]
+        )
+        
+        # 3. Прямой поиск в ChromaDB без фильтров
+        raw_search = collection.query(
+            query_texts=[query],
+            n_results=10,
+            include=["documents", "metadatas", "distances"]
+        )
+        
+        # 4. Поиск с очень низким порогом
+        try:
+            low_threshold_results = await document_service.search(
+                query=query,
+                limit=10,
+                min_relevance=0.01  # 1%
+            )
+        except Exception as e:
+            low_threshold_results = f"Error: {e}"
+        
+        # 5. Ищем наш документ в результатах
+        target_doc_id = "tmpj4r82ypb.txt_c758312a"
+        target_found = False
+        target_info = None
+        
+        if all_docs["ids"] and target_doc_id in all_docs["ids"]:
+            idx = all_docs["ids"].index(target_doc_id)
+            target_info = {
+                "id": target_doc_id,
+                "content_preview": all_docs["documents"][idx][:200] + "...",
+                "metadata": all_docs["metadatas"][idx],
+                "has_embedding": all_docs["embeddings"] is not None and len(all_docs["embeddings"]) > idx
+            }
+            target_found = True
+        
+        # 6. Анализируем результаты поиска
+        search_analysis = {
+            "total_results": len(raw_search["documents"][0]) if raw_search["documents"] and raw_search["documents"][0] else 0,
+            "results_details": []
+        }
+        
+        if raw_search["documents"] and raw_search["documents"][0]:
+            for i in range(len(raw_search["documents"][0])):
+                result_detail = {
+                    "id": raw_search["ids"][0][i],
+                    "distance": raw_search["distances"][0][i],
+                    "relevance_score": 1 - raw_search["distances"][0][i],
+                    "content_preview": raw_search["documents"][0][i][:100] + "...",
+                    "metadata": raw_search["metadatas"][0][i],
+                    "is_target_doc": raw_search["ids"][0][i] == target_doc_id
+                }
+                search_analysis["results_details"].append(result_detail)
+        
+        # 7. Проверяем embedding функцию
+        try:
+            test_embedding = chroma_service.embedding_function([query])
+            embedding_works = True
+            embedding_dimension = len(test_embedding[0]) if test_embedding else 0
+        except Exception as e:
+            embedding_works = False
+            embedding_dimension = 0
+            test_embedding = f"Error: {e}"
+        
+        # 8. Текстовый поиск (простой)
+        simple_text_matches = []
+        if all_docs["documents"]:
+            for i, doc_content in enumerate(all_docs["documents"]):
+                if query.lower() in doc_content.lower():
+                    simple_text_matches.append({
+                        "id": all_docs["ids"][i],
+                        "filename": all_docs["metadatas"][i].get("filename", "Unknown"),
+                        "match_position": doc_content.lower().find(query.lower()),
+                        "content_preview": doc_content[max(0, doc_content.lower().find(query.lower())-50):doc_content.lower().find(query.lower())+150]
+                    })
+        
+        return {
+            "debug_info": {
+                "query": query,
+                "chromadb_status": {
+                    "total_documents_in_collection": total_count,
+                    "collection_name": collection.name,
+                    "embedding_function": str(chroma_service.embedding_function),
+                    "embedding_works": embedding_works,
+                    "embedding_dimension": embedding_dimension
+                },
+                "target_document": {
+                    "found_in_collection": target_found,
+                    "document_info": target_info
+                },
+                "raw_chromadb_search": search_analysis,
+                "simple_text_search": {
+                    "matches_found": len(simple_text_matches),
+                    "matches": simple_text_matches
+                },
+                "service_search_results": {
+                    "low_threshold_results": low_threshold_results if isinstance(low_threshold_results, str) else f"Found {len(low_threshold_results)} results"
+                }
+            },
+            "recommendations": []
+        }
+        
+    except Exception as e:
+        logger.error(f"Debug ChromaDB error: {e}")
+        return {
+            "debug_info": {"error": str(e)},
+            "recommendations": ["Check ChromaDB service status", "Verify embedding function"]
+        }        
+
 async def _get_performance_stats(document_service):
     """Получает статистику производительности"""
     try:

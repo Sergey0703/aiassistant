@@ -37,9 +37,9 @@ class ChromaDBService:
         # Инициализируем ChromaDB клиент
         self.client = chromadb.PersistentClient(path=persist_directory)
         
-        # Настраиваем эмбеддинг функцию (можно поменять на OpenAI или другую)
+        # Настраиваем эмбеддинг функцию
         self.embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
-            model_name="all-MiniLM-L6-v2"  # Быстрая и качественная модель
+            model_name="all-MiniLM-L6-v2"
         )
         
         # Создаем или получаем коллекцию документов
@@ -54,6 +54,16 @@ class ChromaDBService:
     async def add_document(self, document: ProcessedDocument) -> bool:
         """Добавляет документ в ChromaDB"""
         try:
+            # Проверяем существование документа
+            existing_docs = self.collection.get(
+                ids=[document.id],
+                include=["metadatas"]
+            )
+            
+            if existing_docs["ids"]:
+                logger.warning(f"Document {document.id} already exists, skipping addition")
+                return True  # Считаем успешным, так как документ уже есть
+            
             # Подготавливаем метаданные для ChromaDB
             chroma_metadata = {
                 "filename": document.filename,
@@ -62,18 +72,17 @@ class ChromaDBService:
                 "word_count": len(document.content.split()),
                 "chunks_count": len(document.chunks),
                 "added_at": time.time(),
-                **document.metadata  # Добавляем оригинальные метаданные
+                **document.metadata
             }
             
-            # ВСЕГДА создаем основной документ
+            # Добавляем основной документ
             main_metadata = chroma_metadata.copy()
             main_metadata.update({
-                "is_chunk": False,  # КРИТИЧНО: основной документ
+                "is_chunk": False,
                 "chunk_index": -1,
                 "parent_document_id": document.id
             })
             
-            # Добавляем основной документ
             self.collection.add(
                 ids=[document.id],
                 documents=[document.content],
@@ -90,6 +99,17 @@ class ChromaDBService:
                 
                 for i, chunk in enumerate(document.chunks):
                     chunk_id = f"{document.id}_chunk_{i}"
+                    
+                    # Проверяем существование чанка
+                    existing_chunk = self.collection.get(
+                        ids=[chunk_id],
+                        include=["metadatas"]
+                    )
+                    
+                    if existing_chunk["ids"]:
+                        logger.debug(f"Chunk {chunk_id} already exists, skipping")
+                        continue
+                    
                     chunk_ids.append(chunk_id)
                     chunk_documents.append(chunk)
                     
@@ -97,20 +117,22 @@ class ChromaDBService:
                     chunk_metadata.update({
                         "chunk_index": i,
                         "parent_document_id": document.id,
-                        "is_chunk": True  # Это чанк
+                        "is_chunk": True
                     })
                     chunk_metadatas.append(chunk_metadata)
                 
-                # Добавляем все чанки
-                self.collection.add(
-                    ids=chunk_ids,
-                    documents=chunk_documents,
-                    metadatas=chunk_metadatas
-                )
-                
-                logger.info(f"✅ Added {len(document.chunks)} chunks for {document.filename}")
+                # Добавляем только новые чанки
+                if chunk_ids:
+                    self.collection.add(
+                        ids=chunk_ids,
+                        documents=chunk_documents,
+                        metadatas=chunk_metadatas
+                    )
+                    
+                    logger.info(f"✅ Added {len(chunk_ids)} new chunks for {document.filename}")
+                else:
+                    logger.info(f"✅ All chunks for {document.filename} already exist")
             else:
-                # Для документов без чанков просто логируем
                 logger.info(f"✅ Added single document {document.filename}")
             
             return True
@@ -120,8 +142,10 @@ class ChromaDBService:
             return False
     
     async def search_documents(self, query: str, n_results: int = 5, 
-                             category: str = None, **filters) -> List[Dict]:
-        """Поиск документов по семантическому сходству"""
+                             category: str = None, min_relevance: float = 0.3, **filters) -> List[Dict]:
+        """
+        Поиск документов по семантическому сходству с улучшенной фильтрацией
+        """
         try:
             # Подготавливаем фильтры
             where_filter = {}
@@ -129,38 +153,162 @@ class ChromaDBService:
             if category:
                 where_filter["category"] = category
             
-            # Добавляем дополнительные фильтры
-            where_filter.update(filters)
+            # Добавляем дополнительные фильтры (но НЕ is_chunk!)
+            for key, value in filters.items():
+                if key != "is_chunk":  # Игнорируем фильтр по чанкам
+                    where_filter[key] = value
             
-            # Выполняем поиск
+            # Увеличиваем количество результатов для лучшей фильтрации
+            search_limit = min(n_results * 3, 20)
+            
+            # ИСПРАВЛЕНО: Ищем во ВСЕХ документах и чанках
             results = self.collection.query(
                 query_texts=[query],
-                n_results=n_results,
-                where=where_filter if where_filter else None,
+                n_results=search_limit,
+                where=where_filter if where_filter else None,  # Убрали фильтр is_chunk
                 include=["documents", "metadatas", "distances"]
             )
             
-            # Форматируем результаты
+            # Форматируем и фильтруем результаты
             formatted_results = []
+            query_lower = query.lower()
+            seen_parent_ids = set()  # Для избежания дубликатов
             
             if results["documents"] and results["documents"][0]:
                 for i in range(len(results["documents"][0])):
+                    distance = results["distances"][0][i]
+                    
+                    # ИСПРАВЛЕНО: Новая формула для relevance_score
+                    # ChromaDB может возвращать distance > 1.0, что дает отрицательные scores
+                    if distance <= 0:
+                        relevance_score = 1.0  # Идеальное совпадение
+                    elif distance >= 2.0:
+                        relevance_score = 0.0  # Очень плохое совпадение
+                    else:
+                        # Нормализуем distance от 0-2 к relevance_score от 1-0
+                        relevance_score = max(0.0, (2.0 - distance) / 2.0)
+                    
+                    # Фильтрация по минимальной релевантности
+                    if relevance_score < min_relevance:
+                        logger.debug(f"Skipping result with low relevance: {relevance_score:.3f} (distance: {distance:.3f})")
+                        continue
+                    
+                    document_content = results["documents"][0][i]
+                    metadata = results["metadatas"][0][i]
+                    
+                    # Получаем parent_document_id
+                    parent_doc_id = metadata.get("parent_document_id")
+                    current_doc_id = results["ids"][0][i]
+                    
+                    # Избегаем дубликатов - если уже есть основной документ, пропускаем чанки
+                    unique_id = parent_doc_id or current_doc_id
+                    if unique_id in seen_parent_ids:
+                        logger.debug(f"Skipping duplicate parent document: {unique_id}")
+                        continue
+                    seen_parent_ids.add(unique_id)
+                    
+                    # Проверяем наличие точного совпадения в тексте
+                    content_lower = document_content.lower()
+                    filename_lower = metadata.get("filename", "").lower()
+                    
+                    # Определяем тип совпадения
+                    exact_match = query_lower in content_lower or query_lower in filename_lower
+                    semantic_match = relevance_score > 0.7
+                    
+                    # Лучший контекст
+                    best_context = self._find_best_context(document_content, query, max_length=400)
+                    
                     result = {
-                        "content": results["documents"][0][i],
-                        "metadata": results["metadatas"][0][i],
-                        "distance": results["distances"][0][i],
-                        "relevance_score": 1 - results["distances"][0][i],  # Преобразуем distance в score
-                        "document_id": results["metadatas"][0][i].get("parent_document_id") or results["ids"][0][i],
-                        "filename": results["metadatas"][0][i].get("filename", "Unknown")
+                        "content": best_context,
+                        "full_content": document_content,
+                        "metadata": metadata,
+                        "distance": distance,
+                        "relevance_score": relevance_score,
+                        "document_id": parent_doc_id or current_doc_id,
+                        "filename": metadata.get("filename", "Unknown"),
+                        "exact_match": exact_match,
+                        "semantic_match": semantic_match,
+                        "is_chunk": metadata.get("is_chunk", False),
+                        "search_info": {
+                            "query": query,
+                            "match_type": "exact" if exact_match else ("semantic" if semantic_match else "weak"),
+                            "confidence": "high" if relevance_score > 0.7 else ("medium" if relevance_score > 0.5 else "low"),
+                            "source_type": "chunk" if metadata.get("is_chunk", False) else "document"
+                        }
                     }
                     formatted_results.append(result)
             
-            logger.info(f"Found {len(formatted_results)} results for query: {query[:50]}...")
+            # Сортируем: сначала точные совпадения, потом основные документы, потом по релевантности
+            formatted_results.sort(key=lambda x: (
+                x["exact_match"],                    # 1. Точные совпадения первыми
+                not x["is_chunk"],                   # 2. Основные документы перед чанками  
+                x["relevance_score"]                 # 3. По релевантности
+            ), reverse=True)
+            
+            # Ограничиваем до запрошенного количества
+            formatted_results = formatted_results[:n_results]
+            
+            # Логирование результатов
+            if formatted_results:
+                logger.info(f"Found {len(formatted_results)} relevant results for '{query}' (min_relevance={min_relevance})")
+                for result in formatted_results:
+                    source_type = result['search_info']['source_type']
+                    logger.debug(f"  - {result['filename']} ({source_type}): {result['search_info']['match_type']} match, "
+                               f"relevance={result['relevance_score']:.3f}")
+            else:
+                logger.info(f"No relevant results found for '{query}' with min_relevance={min_relevance}")
+            
             return formatted_results
             
         except Exception as e:
             logger.error(f"Error searching documents: {str(e)}")
             return []
+    
+    def _find_best_context(self, content: str, query: str, max_length: int = 400) -> str:
+        """
+        Находит наиболее релевантную часть документа для показа в результатах
+        """
+        if len(content) <= max_length:
+            return content
+        
+        query_words = query.lower().split()
+        content_lower = content.lower()
+        
+        # Ищем лучшее место для начала контекста
+        best_score = 0
+        best_start = 0
+        
+        # Проверяем различные позиции в тексте
+        for start in range(0, len(content) - max_length + 1, max_length // 4):
+            end = start + max_length
+            segment = content_lower[start:end]
+            
+            # Считаем количество найденных слов запроса в сегменте
+            score = sum(1 for word in query_words if word in segment)
+            
+            # Бонус за нахождение в начале документа
+            if start == 0:
+                score += 0.5
+            
+            if score > best_score:
+                best_score = score
+                best_start = start
+        
+        # Если не нашли хороший контекст, возвращаем начало
+        if best_score == 0:
+            return content[:max_length] + "..."
+        
+        # Возвращаем лучший контекст
+        best_end = best_start + max_length
+        context = content[best_start:best_end]
+        
+        # Добавляем многоточие если обрезали
+        if best_start > 0:
+            context = "..." + context
+        if best_end < len(content):
+            context = context + "..."
+        
+        return context.strip()
     
     async def get_document_count(self) -> int:
         """Возвращает количество документов в коллекции"""
@@ -173,26 +321,43 @@ class ChromaDBService:
     async def delete_document(self, document_id: str) -> bool:
         """Удаляет документ и все его чанки"""
         try:
-            # Сначала находим все чанки этого документа
-            results = self.collection.get(
+            # Получаем все связанные документы и чанки
+            all_related_docs = self.collection.get(
                 where={"parent_document_id": document_id},
                 include=["metadatas"]
             )
             
-            ids_to_delete = []
+            ids_to_delete = set()  # Используем set для уникальности
             
             # Добавляем ID чанков
-            if results["ids"]:
-                ids_to_delete.extend(results["ids"])
+            if all_related_docs["ids"]:
+                ids_to_delete.update(all_related_docs["ids"])
             
             # Добавляем основной документ
-            ids_to_delete.append(document_id)
+            ids_to_delete.add(document_id)
             
-            # Удаляем все найденные документы
-            if ids_to_delete:
-                self.collection.delete(ids=ids_to_delete)
-                logger.info(f"Deleted document {document_id} and {len(ids_to_delete)-1} chunks")
-                return True
+            # Проверяем какие ID реально существуют
+            existing_docs = self.collection.get(
+                ids=list(ids_to_delete),
+                include=["metadatas"]
+            )
+            
+            actual_ids_to_delete = existing_docs["ids"]
+            
+            if actual_ids_to_delete:
+                # Удаляем по одному ID для избежания дубликатов
+                deleted_count = 0
+                for doc_id in actual_ids_to_delete:
+                    try:
+                        self.collection.delete(ids=[doc_id])
+                        deleted_count += 1
+                        logger.debug(f"Deleted document/chunk: {doc_id}")
+                    except Exception as e:
+                        logger.warning(f"Failed to delete {doc_id}: {e}")
+                        continue
+                
+                logger.info(f"Successfully deleted {deleted_count} documents/chunks for {document_id}")
+                return deleted_count > 0
             else:
                 logger.warning(f"Document {document_id} not found for deletion")
                 return False
@@ -204,16 +369,23 @@ class ChromaDBService:
     async def get_all_documents(self) -> List[Dict]:
         """Получает все основные документы (не чанки) для админ панели"""
         try:
-            # Получаем только основные документы (не чанки)
+            # Более надежный запрос основных документов
             results = self.collection.get(
                 where={"is_chunk": False},
                 include=["documents", "metadatas"]
             )
             
             documents = []
+            seen_ids = set()  # Для фильтрации дубликатов
             
             if results["ids"]:
                 for i, doc_id in enumerate(results["ids"]):
+                    # Пропускаем дубликаты
+                    if doc_id in seen_ids:
+                        logger.debug(f"Skipping duplicate document: {doc_id}")
+                        continue
+                    
+                    seen_ids.add(doc_id)
                     metadata = results["metadatas"][i]
                     
                     doc = {
@@ -232,7 +404,7 @@ class ChromaDBService:
             # Сортируем по дате добавления (новые первые)
             documents.sort(key=lambda x: x["added_at"], reverse=True)
             
-            logger.info(f"Retrieved {len(documents)} documents")
+            logger.info(f"Retrieved {len(documents)} unique documents")
             return documents
             
         except Exception as e:
@@ -260,7 +432,7 @@ class ChromaDBService:
                 if new_metadata:
                     metadata.update(new_metadata)
                 
-                # Удаляем старый
+                # Удаляем старый документ и все его чанки
                 await self.delete_document(document_id)
                 
                 # Добавляем новый
@@ -291,16 +463,25 @@ class ChromaDBService:
             )
             
             categories = set()
+            unique_docs = 0
+            
             if all_results["metadatas"]:
-                categories = set(meta.get("category", "general") for meta in all_results["metadatas"])
+                seen_ids = set()
+                for i, doc_id in enumerate(all_results["ids"]):
+                    if doc_id not in seen_ids:
+                        seen_ids.add(doc_id)
+                        unique_docs += 1
+                        category = all_results["metadatas"][i].get("category", "general")
+                        categories.add(category)
             
             return {
-                "total_documents": len(all_results["ids"]) if all_results["ids"] else 0,
+                "total_documents": unique_docs,
                 "categories": list(categories),
                 "database_type": "ChromaDB",
                 "persist_directory": self.persist_directory,
                 "embedding_model": "all-MiniLM-L6-v2",
-                "total_chunks": total_count
+                "total_chunks": total_count,
+                "unique_documents": unique_docs
             }
             
         except Exception as e:
@@ -311,10 +492,75 @@ class ChromaDBService:
                 "database_type": "ChromaDB",
                 "error": str(e)
             }
+    
+    async def cleanup_duplicates(self) -> Dict:
+        """Очищает дубликаты в базе данных"""
+        try:
+            logger.info("🧹 Starting duplicate cleanup...")
+            
+            # Получаем все документы
+            all_docs = self.collection.get(include=["metadatas"])
+            
+            if not all_docs["ids"]:
+                return {"removed": 0, "message": "No documents found"}
+            
+            # Группируем по parent_document_id
+            docs_by_parent = {}
+            duplicates_to_remove = []
+            
+            for i, doc_id in enumerate(all_docs["ids"]):
+                metadata = all_docs["metadatas"][i]
+                parent_id = metadata.get("parent_document_id", doc_id)
+                is_chunk = metadata.get("is_chunk", False)
+                
+                if parent_id not in docs_by_parent:
+                    docs_by_parent[parent_id] = []
+                
+                docs_by_parent[parent_id].append({
+                    "id": doc_id,
+                    "is_chunk": is_chunk,
+                    "metadata": metadata
+                })
+            
+            # Находим дубликаты основных документов
+            for parent_id, docs in docs_by_parent.items():
+                main_docs = [d for d in docs if not d["is_chunk"]]
+                
+                if len(main_docs) > 1:
+                    # Оставляем самый новый, удаляем остальные
+                    main_docs.sort(key=lambda x: x["metadata"].get("added_at", 0), reverse=True)
+                    for duplicate in main_docs[1:]:
+                        duplicates_to_remove.append(duplicate["id"])
+                        logger.debug(f"Marking duplicate main document for removal: {duplicate['id']}")
+            
+            # Удаляем дубликаты
+            removed_count = 0
+            for doc_id in duplicates_to_remove:
+                try:
+                    self.collection.delete(ids=[doc_id])
+                    removed_count += 1
+                    logger.debug(f"Removed duplicate: {doc_id}")
+                except Exception as e:
+                    logger.warning(f"Failed to remove duplicate {doc_id}: {e}")
+            
+            logger.info(f"🧹 Cleanup completed: removed {removed_count} duplicates")
+            
+            return {
+                "removed": removed_count,
+                "message": f"Successfully removed {removed_count} duplicate documents"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
+            return {
+                "removed": 0,
+                "error": str(e),
+                "message": "Cleanup failed"
+            }
 
 # Для обратной совместимости
 class DocumentProcessor:
-    """Обработчик документов - остается тот же"""
+    """Обработчик документов"""
     
     def __init__(self):
         self.supported_formats = {
@@ -439,9 +685,16 @@ class DocumentService:
         
         return await self.vector_db.add_document(document)
     
-    async def search(self, query: str, category: str = None, limit: int = 5) -> List[Dict]:
-        """Поиск документов"""
-        return await self.vector_db.search_documents(query, limit, category)
+    async def search(self, query: str, category: str = None, limit: int = 5, min_relevance: float = 0.3) -> List[Dict]:
+        """
+        Поиск документов с улучшенной фильтрацией
+        """
+        return await self.vector_db.search_documents(
+            query=query, 
+            n_results=limit, 
+            category=category,
+            min_relevance=min_relevance
+        )
     
     async def get_stats(self) -> Dict:
         """Получает статистику"""
@@ -454,3 +707,7 @@ class DocumentService:
     async def delete_document(self, document_id: str) -> bool:
         """Удаляет документ"""
         return await self.vector_db.delete_document(document_id)
+    
+    async def cleanup_duplicates(self) -> Dict:
+        """Очищает дубликаты"""
+        return await self.vector_db.cleanup_duplicates()

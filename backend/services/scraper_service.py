@@ -63,9 +63,10 @@ class ScrapedDocument:
         content = re.sub(r'\.{3,}', '...', content)
         content = re.sub(r'-{3,}', '---', content)
         
-        # Ограничиваем размер
-        if len(content) > 15000:  # 15KB лимит
-            content = content[:15000] + "\n\n[Документ обрезан до 15000 символов]"
+        # УДАЛЕНО: Искусственное ограничение размера
+        # Теперь документы могут быть любого размера
+        # ChromaDB и современные embedding модели могут работать с большими документами
+        # Разбивка на чанки происходит автоматически в DocumentProcessor
         
         return content.strip()
 
