@@ -1,5 +1,5 @@
 # ====================================
-# ФАЙЛ: backend/api/__init__.py (ИСПРАВЛЕННАЯ ВЕРСИЯ)
+# ФАЙЛ: backend/api/__init__.py (ПОЛНАЯ ОБНОВЛЕННАЯ ВЕРСИЯ)
 # Заменить существующий файл полностью
 # ====================================
 
@@ -55,6 +55,10 @@ API_TAGS = [
     {
         "name": "Admin Stats",
         "description": "Statistics and analytics endpoints for administrators"
+    },
+    {
+        "name": "Admin LLM",
+        "description": "LLM management and monitoring endpoints"
     },
     {
         "name": "System",
@@ -204,6 +208,20 @@ def load_admin_routers():
         except ImportError as e:
             logger.error(f"❌ Failed to import admin stats router: {e}")
             api_registry.initialization_errors.append(f"Admin stats router: {e}")
+        
+        # ДОБАВЛЕНО: Загружаем LLM router
+        try:
+            from api.admin.llm import router as llm_router
+            api_registry.register_router(
+                "admin_llm",
+                llm_router,
+                prefix="/api/admin",
+                tags=["Admin LLM"]
+            )
+            logger.info("✅ Admin LLM router loaded successfully")
+        except ImportError as e:
+            logger.error(f"❌ Failed to import admin LLM router: {e}")
+            api_registry.initialization_errors.append(f"Admin LLM router: {e}")
         
         logger.info("✅ Admin routers loaded successfully")
         
