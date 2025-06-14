@@ -1,6 +1,6 @@
 # ====================================
-# ФАЙЛ: backend/services/chroma_service.py (НОВЫЙ ФАЙЛ)
-# Создать новый файл для работы с ChromaDB
+# ФАЙЛ: backend/services/chroma_service.py (ПОЛНЫЙ ИСПРАВЛЕННЫЙ)
+# Заменить существующий файл полностью
 # ====================================
 
 import chromadb
@@ -65,9 +65,25 @@ class ChromaDBService:
                 **document.metadata  # Добавляем оригинальные метаданные
             }
             
-            # Если документ большой, разбиваем на чанки
+            # ВСЕГДА создаем основной документ
+            main_metadata = chroma_metadata.copy()
+            main_metadata.update({
+                "is_chunk": False,  # КРИТИЧНО: основной документ
+                "chunk_index": -1,
+                "parent_document_id": document.id
+            })
+            
+            # Добавляем основной документ
+            self.collection.add(
+                ids=[document.id],
+                documents=[document.content],
+                metadatas=[main_metadata]
+            )
+            
+            logger.info(f"✅ Added main document {document.filename}")
+            
+            # Если документ большой, добавляем чанки
             if len(document.chunks) > 1:
-                # Добавляем каждый чанк как отдельный документ
                 chunk_ids = []
                 chunk_documents = []
                 chunk_metadatas = []
@@ -81,29 +97,21 @@ class ChromaDBService:
                     chunk_metadata.update({
                         "chunk_index": i,
                         "parent_document_id": document.id,
-                        "is_chunk": True
+                        "is_chunk": True  # Это чанк
                     })
                     chunk_metadatas.append(chunk_metadata)
                 
-                # Добавляем все чанки одним запросом
+                # Добавляем все чанки
                 self.collection.add(
                     ids=chunk_ids,
                     documents=chunk_documents,
                     metadatas=chunk_metadatas
                 )
                 
-                logger.info(f"Added document {document.filename} as {len(document.chunks)} chunks")
+                logger.info(f"✅ Added {len(document.chunks)} chunks for {document.filename}")
             else:
-                # Добавляем как один документ
-                chroma_metadata["is_chunk"] = False
-                
-                self.collection.add(
-                    ids=[document.id],
-                    documents=[document.content],
-                    metadatas=[chroma_metadata]
-                )
-                
-                logger.info(f"Added document {document.filename} as single document")
+                # Для документов без чанков просто логируем
+                logger.info(f"✅ Added single document {document.filename}")
             
             return True
             
@@ -194,7 +202,7 @@ class ChromaDBService:
             return False
     
     async def get_all_documents(self) -> List[Dict]:
-        """Получает все документы для админ панели"""
+        """Получает все основные документы (не чанки) для админ панели"""
         try:
             # Получаем только основные документы (не чанки)
             results = self.collection.get(
@@ -231,8 +239,7 @@ class ChromaDBService:
             logger.error(f"Error getting all documents: {str(e)}")
             return []
     
-    async def update_document(self, document_id: str, new_content: str = None, 
-                            new_metadata: Dict = None) -> bool:
+    async def update_document(self, document_id: str, new_content: str = None, new_metadata: Dict = None) -> bool:
         """Обновляет документ"""
         try:
             # ChromaDB не поддерживает прямое обновление, поэтому удаляем и добавляем заново
@@ -277,7 +284,7 @@ class ChromaDBService:
         try:
             total_count = await self.get_document_count()
             
-            # Получаем уникальные категории
+            # Получаем уникальные категории из основных документов
             all_results = self.collection.get(
                 where={"is_chunk": False},
                 include=["metadatas"]
@@ -288,11 +295,12 @@ class ChromaDBService:
                 categories = set(meta.get("category", "general") for meta in all_results["metadatas"])
             
             return {
-                "total_documents": total_count,
+                "total_documents": len(all_results["ids"]) if all_results["ids"] else 0,
                 "categories": list(categories),
                 "database_type": "ChromaDB",
                 "persist_directory": self.persist_directory,
-                "embedding_model": "all-MiniLM-L6-v2"
+                "embedding_model": "all-MiniLM-L6-v2",
+                "total_chunks": total_count
             }
             
         except Exception as e:
@@ -300,6 +308,7 @@ class ChromaDBService:
             return {
                 "total_documents": 0,
                 "categories": [],
+                "database_type": "ChromaDB",
                 "error": str(e)
             }
 

@@ -9,6 +9,7 @@ User Search Endpoints - Пользовательские endpoints для пои
 
 from fastapi import APIRouter, HTTPException, Depends
 import logging
+import time
 
 from models.requests import SearchRequest
 from models.responses import SearchResponse, SearchResult

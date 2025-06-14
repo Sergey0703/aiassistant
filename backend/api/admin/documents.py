@@ -24,6 +24,7 @@ from models.responses import (
 )
 from app.dependencies import get_document_service, get_services_status, CHROMADB_ENABLED
 from app.config import settings, DOCUMENT_CATEGORIES
+import time
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
