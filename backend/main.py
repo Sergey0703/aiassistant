@@ -6,21 +6,53 @@ import uvicorn
 import tempfile
 import os
 import asyncio
+import json
+import time
 from pathlib import Path
 import logging
-
-# Импорты наших сервисов
-try:
-    from services.scraper_service import LegalSiteScraper, ScrapedDocument, UKRAINE_LEGAL_URLS, IRELAND_LEGAL_URLS
-    from services.document_processor import DocumentService
-    SERVICES_AVAILABLE = True
-except ImportError as e:
-    logging.warning(f"Services not available: {e}")
-    SERVICES_AVAILABLE = False
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Импорты наших сервисов
+try:
+    import sys
+    import os
+    
+    # Добавляем текущую папку в Python path
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    if current_dir not in sys.path:
+        sys.path.append(current_dir)
+    
+    from services.scraper_service import LegalSiteScraper, ScrapedDocument, UKRAINE_LEGAL_URLS, IRELAND_LEGAL_URLS
+    from services.document_processor import DocumentService
+    SERVICES_AVAILABLE = True
+    logger.info("✅ Services imported successfully")
+except ImportError as e:
+    logger.error(f"❌ Services import failed: {e}")
+    logger.error("Creating fallback services...")
+    SERVICES_AVAILABLE = False
+    
+    # Создаем fallback классы
+    class FallbackScraper:
+        async def scrape_legal_site(self, url):
+            raise Exception("Scraper service unavailable")
+        async def scrape_multiple_urls(self, urls, delay=1.0):
+            raise Exception("Scraper service unavailable")
+    
+    class FallbackDocumentService:
+        async def process_and_store_file(self, file_path, category):
+            raise Exception("Document service unavailable")
+        async def search(self, query, category=None, limit=5):
+            return []
+        async def get_stats(self):
+            return {"total_documents": 0, "error": "Service unavailable"}
+    
+    LegalSiteScraper = FallbackScraper
+    DocumentService = FallbackDocumentService
+    UKRAINE_LEGAL_URLS = []
+    IRELAND_LEGAL_URLS = []
 
 app = FastAPI(title="Legal Assistant API", version="2.0.0", description="AI Legal Assistant with document scraping and ChromaDB")
 
@@ -476,7 +508,7 @@ async def scrape_multiple_urls(bulk_request: BulkScrapeRequest):
 
 @app.get("/api/admin/documents")
 async def get_documents():
-    """Получить список всех документов"""
+    """Получить детальный список всех документов"""
     if not document_service:
         return {
             "message": "Document service unavailable",
@@ -485,16 +517,76 @@ async def get_documents():
         }
     
     try:
-        stats = await document_service.get_stats()
+        # Получаем документы из простой базы данных
+        db_file = os.path.join(document_service.vector_db.persist_directory, "documents.json")
+        
+        if not os.path.exists(db_file):
+            return {
+                "documents": [],
+                "total": 0,
+                "message": "No documents database found"
+            }
+        
+        with open(db_file, 'r', encoding='utf-8') as f:
+            raw_documents = json.load(f)
+        
+        # Форматируем документы для frontend
+        formatted_documents = []
+        for doc in raw_documents:
+            # Определяем источник по метаданным или URL
+            source = "Unknown"
+            if "scraped_at" in doc.get("metadata", {}):
+                source = "Web Scraping"
+            elif doc.get("category") == "ukraine_legal":
+                source = "Ukraine Legal Sites"
+            elif doc.get("category") == "ireland_legal":
+                source = "Ireland Legal Sites"
+            elif doc.get("category") == "scraped":
+                source = "Manual URL Scraping"
+            elif "file_extension" in doc.get("metadata", {}):
+                source = "File Upload"
+            
+            # Извлекаем URL если есть
+            original_url = "N/A"
+            if doc.get("metadata", {}).get("scraped_at"):
+                # Пытаемся найти URL в контенте
+                content = doc.get("content", "")
+                if "URL:" in content:
+                    url_line = [line for line in content.split('\n') if line.startswith('URL:')]
+                    if url_line:
+                        original_url = url_line[0].replace('URL:', '').strip()
+            
+            formatted_doc = {
+                "id": doc["id"],
+                "filename": doc["filename"],
+                "category": doc["category"],
+                "source": source,
+                "original_url": original_url,
+                "content": doc["content"],
+                "size": doc["metadata"].get("content_length", len(doc["content"])),
+                "word_count": doc["metadata"].get("word_count", 0),
+                "chunks_count": len(doc.get("chunks", [])),
+                "added_at": doc.get("added_at", time.time()),
+                "metadata": doc["metadata"]
+            }
+            formatted_documents.append(formatted_doc)
+        
+        # Сортируем по времени добавления (новые первые)
+        formatted_documents.sort(key=lambda x: x["added_at"], reverse=True)
+        
         return {
-            "message": "Document list from ChromaDB",
-            "total_documents": stats["total_documents"],
-            "documents": [],  # В реальной версии здесь будет список документов
-            "note": "Detailed document list requires ChromaDB metadata queries implementation"
+            "documents": formatted_documents,
+            "total": len(formatted_documents),
+            "message": f"Found {len(formatted_documents)} documents"
         }
+        
     except Exception as e:
         logger.error(f"Get documents error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {
+            "documents": [],
+            "total": 0,
+            "error": str(e)
+        }
 
 @app.delete("/api/admin/documents/{doc_id}")
 async def delete_document(doc_id: str):
@@ -503,11 +595,51 @@ async def delete_document(doc_id: str):
         raise HTTPException(status_code=503, detail="Document service unavailable")
     
     try:
-        success = await document_service.vector_db.delete_document(doc_id)
-        if success:
-            return {"message": f"Document {doc_id} deleted successfully"}
-        else:
-            raise HTTPException(status_code=404, detail="Document not found")
+        # URL decode ID
+        import urllib.parse
+        decoded_id = urllib.parse.unquote(doc_id)
+        logger.info(f"Attempting to delete document with ID: {decoded_id}")
+        
+        # Для простой базы данных - удаляем из JSON файла
+        db_file = os.path.join(document_service.vector_db.persist_directory, "documents.json")
+        
+        if not os.path.exists(db_file):
+            raise HTTPException(status_code=404, detail="Database not found")
+        
+        with open(db_file, 'r', encoding='utf-8') as f:
+            documents = json.load(f)
+        
+        # Ищем документ для удаления
+        original_count = len(documents)
+        found_doc = None
+        
+        # Поиск по точному совпадению ID
+        for doc in documents:
+            if doc['id'] == decoded_id:
+                found_doc = doc
+                break
+        
+        if not found_doc:
+            logger.warning(f"Document not found with ID: {decoded_id}")
+            logger.info(f"Available document IDs: {[doc['id'] for doc in documents[:3]]}")
+            raise HTTPException(status_code=404, detail=f"Document with ID '{decoded_id}' not found")
+        
+        # Удаляем найденный документ
+        documents = [doc for doc in documents if doc['id'] != decoded_id]
+        
+        # Сохраняем обновленный список
+        with open(db_file, 'w', encoding='utf-8') as f:
+            json.dump(documents, f, ensure_ascii=False, indent=2)
+        
+        deleted_count = original_count - len(documents)
+        logger.info(f"Successfully deleted document: {found_doc['filename']}")
+        
+        return {
+            "message": f"Document '{found_doc['filename']}' deleted successfully", 
+            "deleted_count": deleted_count,
+            "deleted_id": decoded_id
+        }
+        
     except HTTPException:
         raise
     except Exception as e:

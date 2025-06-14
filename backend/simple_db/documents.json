@@ -1,0 +1,86 @@
+[
+  {
+    "id": "tmp7sbbjctd.txt_8fbb5a83",
+    "filename": "tmp7sbbjctd.txt",
+    "content": "Тестовый документ с сайта https://court.gov.ua/\n\nЭто демонстрационный контент, который показывает работу парсера.\nВ реальной версии здесь будет содержимое веб-страницы.\n\nОсновные разделы:\n1. Общая информация\n2. Юридические требования  \n3. Процедуры и документы\n4. Контактная информация\n\nКонтент: Lorem ipsum dolor sit amet, consectetur adipiscing elit. \nSed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\nUt enim ad minim veniam, quis nostrud exercitation ullamco laboris.\n\nДата: 2025-06-14 07:12:46\nURL: https://court.gov.ua/",
+    "metadata": {
+      "filename": "tmp7sbbjctd.txt",
+      "file_size": 783,
+      "file_extension": ".txt",
+      "content_length": 542,
+      "word_count": 69,
+      "created_at": 1749881569.659366,
+      "modified_at": 1749881569.659366,
+      "language": "unknown",
+      "processed_at": 1749881569.6765146
+    },
+    "category": "ukraine_legal",
+    "chunks": [
+      "Тестовый документ с сайта https://court.gov.ua/\n\nЭто демонстрационный контент, который показывает работу парсера.\nВ реальной версии здесь будет содержимое веб-страницы.\n\nОсновные разделы:\n1. Общая информация\n2. Юридические требования  \n3. Процедуры и документы\n4. Контактная информация\n\nКонтент: Lorem ipsum dolor sit amet, consectetur adipiscing elit. \nSed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\nUt enim ad minim veniam, quis nostrud exercitation ullamco laboris.\n\nДата: 2025-06-14 07:12:46\nURL: https://court.gov.ua/"
+    ],
+    "added_at": 1749881569.6765814
+  },
+  {
+    "id": "tmp0mbisoz5.txt_6f3e84ee",
+    "filename": "tmp0mbisoz5.txt",
+    "content": "Тестовый документ с сайта https://www.irishstatutebook.ie/\n\nЭто демонстрационный контент, который показывает работу парсера.\nВ реальной версии здесь будет содержимое веб-страницы.\n\nОсновные разделы:\n1. Общая информация\n2. Юридические требования  \n3. Процедуры и документы\n4. Контактная информация\n\nКонтент: Lorem ipsum dolor sit amet, consectetur adipiscing elit. \nSed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\nUt enim ad minim veniam, quis nostrud exercitation ullamco laboris.\n\nДата: 2025-06-14 07:13:30\nURL: https://www.irishstatutebook.ie/",
+    "metadata": {
+      "filename": "tmp0mbisoz5.txt",
+      "file_size": 805,
+      "file_extension": ".txt",
+      "content_length": 564,
+      "word_count": 69,
+      "created_at": 1749881616.853988,
+      "modified_at": 1749881616.8549948,
+      "language": "unknown",
+      "processed_at": 1749881616.8716035
+    },
+    "category": "ireland_legal",
+    "chunks": [
+      "Тестовый документ с сайта https://www.irishstatutebook.ie/\n\nЭто демонстрационный контент, который показывает работу парсера.\nВ реальной версии здесь будет содержимое веб-страницы.\n\nОсновные разделы:\n1. Общая информация\n2. Юридические требования  \n3. Процедуры и документы\n4. Контактная информация\n\nКонтент: Lorem ipsum dolor sit amet, consectetur adipiscing elit. \nSed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\nUt enim ad minim veniam, quis nostrud exercitation ullamco laboris.\n\nДата: 2025-06-14 07:13:30\nURL: https://www.irishstatutebook.ie/"
+    ],
+    "added_at": 1749881616.8716676
+  },
+  {
+    "id": "tmp5vhv8nf7.txt_94fe67e4",
+    "filename": "tmp5vhv8nf7.txt",
+    "content": "Тестовый документ с сайта https://www.irishimmigration.ie/\n\nЭто демонстрационный контент, который показывает работу парсера.\nВ реальной версии здесь будет содержимое веб-страницы.\n\nОсновные разделы:\n1. Общая информация\n2. Юридические требования  \n3. Процедуры и документы\n4. Контактная информация\n\nКонтент: Lorem ipsum dolor sit amet, consectetur adipiscing elit. \nSed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\nUt enim ad minim veniam, quis nostrud exercitation ullamco laboris.\n\nДата: 2025-06-14 07:15:02\nURL: https://www.irishimmigration.ie/",
+    "metadata": {
+      "filename": "tmp5vhv8nf7.txt",
+      "file_size": 805,
+      "file_extension": ".txt",
+      "content_length": 564,
+      "word_count": 69,
+      "created_at": 1749881702.0057843,
+      "modified_at": 1749881702.0067818,
+      "language": "unknown",
+      "processed_at": 1749881702.0219975
+    },
+    "category": "scraped",
+    "chunks": [
+      "Тестовый документ с сайта https://www.irishimmigration.ie/\n\nЭто демонстрационный контент, который показывает работу парсера.\nВ реальной версии здесь будет содержимое веб-страницы.\n\nОсновные разделы:\n1. Общая информация\n2. Юридические требования  \n3. Процедуры и документы\n4. Контактная информация\n\nКонтент: Lorem ipsum dolor sit amet, consectetur adipiscing elit. \nSed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\nUt enim ad minim veniam, quis nostrud exercitation ullamco laboris.\n\nДата: 2025-06-14 07:15:02\nURL: https://www.irishimmigration.ie/"
+    ],
+    "added_at": 1749881702.022061
+  },
+  {
+    "id": "tmpb6brxdqk.txt_c47382ea",
+    "filename": "tmpb6brxdqk.txt",
+    "content": "You are here: Home > Moving Country > Irish citizenship Irish citizenship Entitlement to Irish citizenship What is Irish citizenship and who can become an Irish citizen? Irish citizenship through birth or descent You are not automatically an Irish citizen if you were born on the island of Ireland. You may be entitled to Irish citizenship if your parent(s) or grandparents were Irish. You may be entitled to Irish citizenship if you were born outside of Ireland, but you may need to register your birth. Becoming an Irish citizen through naturalisation Naturalisation is the process through which a foreign national can become an Irish citizen. Find out more about who is eligible to become an Irish citizen through naturalisation and how to apply. The Foreign Births Register If your grandparents were born in Ireland, but you were born abroad, your birth must be registered in the Foreign Births Register to claim Irish citizenship. This document explains how to do this.",
+    "metadata": {
+      "filename": "tmpb6brxdqk.txt",
+      "file_size": 974,
+      "file_extension": ".txt",
+      "content_length": 974,
+      "word_count": 160,
+      "created_at": 1749882983.3434772,
+      "modified_at": 1749882983.3434772,
+      "language": "unknown",
+      "processed_at": 1749882983.3602688
+    },
+    "category": "scraped",
+    "chunks": [
+      "You are here: Home > Moving Country > Irish citizenship Irish citizenship Entitlement to Irish citizenship What is Irish citizenship and who can become an Irish citizen? Irish citizenship through birth or descent You are not automatically an Irish citizen if you were born on the island of Ireland. You may be entitled to Irish citizenship if your parent(s) or grandparents were Irish. You may be entitled to Irish citizenship if you were born outside of Ireland, but you may need to register your birth. Becoming an Irish citizen through naturalisation Naturalisation is the process through which a foreign national can become an Irish citizen. Find out more about who is eligible to become an Irish citizen through naturalisation and how to apply. The Foreign Births Register If your grandparents were born in Ireland, but you were born abroad, your birth must be registered in the Foreign Births Register to claim Irish citizenship. This document explains how to do this."
+    ],
+    "added_at": 1749882983.3603497
+  }
+]
