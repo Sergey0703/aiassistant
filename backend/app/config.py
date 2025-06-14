@@ -1,5 +1,5 @@
 # ====================================
-# ФАЙЛ: backend/app/config.py (ПОЛНАЯ ВЕРСИЯ)
+# ФАЙЛ: backend/app/config.py (ИСПРАВЛЕННАЯ ВЕРСИЯ)
 # Заменить существующий файл полностью
 # ====================================
 
@@ -153,6 +153,49 @@ except Exception as e:
                     pass
     
     settings = FallbackSettings()
+
+# ДОБАВЛЕНО: Экспорт API метаданных для совместимости с app/__init__.py
+API_METADATA = {
+    "title": settings.PROJECT_NAME,
+    "version": settings.VERSION,
+    "description": settings.DESCRIPTION,
+    "contact": {
+        "name": "Legal Assistant Team",
+        "email": "support@legalassistant.com"
+    },
+    "license": {
+        "name": "MIT",
+        "url": "https://opensource.org/licenses/MIT"
+    }
+}
+
+# ДОБАВЛЕНО: Экспорт API тегов для совместимости
+API_TAGS = [
+    {
+        "name": "User Chat",
+        "description": "User chat endpoints for legal assistance"
+    },
+    {
+        "name": "User Search", 
+        "description": "Document search endpoints for users"
+    },
+    {
+        "name": "Admin Documents",
+        "description": "Document management endpoints for administrators"
+    },
+    {
+        "name": "Admin Scraper",
+        "description": "Web scraping endpoints for administrators"
+    },
+    {
+        "name": "Admin Stats",
+        "description": "Statistics and analytics endpoints for administrators"
+    },
+    {
+        "name": "System",
+        "description": "System health and information endpoints"
+    }
+]
 
 # Константы категорий документов
 DOCUMENT_CATEGORIES = [

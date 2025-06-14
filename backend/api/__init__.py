@@ -1,6 +1,6 @@
 # ====================================
-# ФАЙЛ: backend/api/__init__.py (НОВЫЙ ФАЙЛ)
-# Создать новый файл для инициализации API пакета
+# ФАЙЛ: backend/api/__init__.py (ИСПРАВЛЕННАЯ ВЕРСИЯ)
+# Заменить существующий файл полностью
 # ====================================
 
 """
@@ -8,6 +8,7 @@ API Package - Основной пакет API endpoints для Legal Assistant
 """
 
 import logging
+import time  # ДОБАВЛЕНО: импорт модуля time
 from typing import List, Dict, Any
 from fastapi import APIRouter, FastAPI
 from fastapi.routing import APIRoute
@@ -264,8 +265,6 @@ def configure_fastapi_app(app: FastAPI):
 
 def get_api_info() -> Dict[str, Any]:
     """Возвращает информацию об API"""
-    import time
-    
     summary = api_registry.get_routes_summary()
     
     return {
