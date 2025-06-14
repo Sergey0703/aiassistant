@@ -1,3 +1,8 @@
+# ====================================
+# ФАЙЛ: backend/requirements.txt (ОБНОВЛЕНИЕ)
+# Обновить существующий файл, добавив ChromaDB зависимости
+# ====================================
+
 # Core FastAPI
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
@@ -11,8 +16,9 @@ sqlalchemy==2.0.23
 databases==0.8.0
 aiosqlite==0.19.0
 
-# Vector Database
+# Vector Database - ChromaDB
 chromadb==0.4.18
+sentence-transformers==2.2.2
 
 # Web Scraping
 beautifulsoup4==4.12.2
@@ -33,3 +39,8 @@ langdetect==1.0.9
 
 # Optional: For Ukrainian language support
 uk-stemmer==1.2.0
+
+# Machine Learning & Embeddings
+numpy>=1.24.0
+torch>=1.13.0
+transformers>=4.21.0
