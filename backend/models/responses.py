@@ -1,6 +1,6 @@
 # ====================================
-# ФАЙЛ: backend/models/responses.py (НОВЫЙ ФАЙЛ)
-# Создать новый файл для Pydantic моделей ответов
+# ФАЙЛ: backend/models/responses.py (ИСПРАВЛЕННАЯ ВЕРСИЯ)
+# Заменить существующий файл полностью
 # ====================================
 
 """
@@ -131,5 +131,5 @@ class SuccessResponse(BaseModel):
 class NotificationResponse(BaseModel):
     """Модель уведомления"""
     message: str = Field(..., description="Текст уведомления")
-    type: str = Field(..., regex="^(success|error|info|warning)$", description="Тип уведомления")
+    type: str = Field(..., pattern="^(success|error|info|warning)$", description="Тип уведомления")
     duration: Optional[int] = Field(None, description="Длительность показа в миллисекундах")

@@ -1,6 +1,6 @@
 # ====================================
-# ФАЙЛ: backend/models/requests.py (НОВЫЙ ФАЙЛ)
-# Создать новый файл для Pydantic моделей запросов
+# ФАЙЛ: backend/models/requests.py (ИСПРАВЛЕННАЯ ВЕРСИЯ)
+# Заменить существующий файл полностью
 # ====================================
 
 """
@@ -14,7 +14,7 @@ from app.config import DOCUMENT_CATEGORIES
 class ChatMessage(BaseModel):
     """Модель сообщения чата"""
     message: str = Field(..., min_length=1, max_length=5000, description="Сообщение пользователя")
-    language: str = Field(default="en", regex="^(en|uk)$", description="Язык интерфейса")
+    language: str = Field(default="en", pattern="^(en|uk)$", description="Язык интерфейса")
 
 class SearchRequest(BaseModel):
     """Модель запроса поиска"""
@@ -90,7 +90,7 @@ class DocumentUpdate(BaseModel):
 
 class PredefinedScrapeRequest(BaseModel):
     """Модель запроса парсинга предустановленных сайтов"""
-    country: str = Field(..., regex="^(ukraine|ireland)$", description="Страна для парсинга")
+    country: str = Field(..., pattern="^(ukraine|ireland)$", description="Страна для парсинга")
     limit: int = Field(default=5, ge=1, le=10, description="Количество сайтов для парсинга")
 
 class ChatHistoryRequest(BaseModel):

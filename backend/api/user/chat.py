@@ -14,7 +14,7 @@ import time
 
 from models.requests import ChatMessage, ChatHistoryRequest
 from models.responses import ChatResponse, ChatHistoryResponse, ChatHistoryItem
-from app.dependencies import get_document_service, get_services_status
+from app.dependencies import get_document_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
